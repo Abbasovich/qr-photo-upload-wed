@@ -1,38 +1,47 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
+const cors = require('cors');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const upload = multer({
-  dest: 'uploads/',
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    const allowed = ['.jpg', '.jpeg', '.png'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    cb(null, allowed.includes(ext));
-  }
-});
+const uploadFolder = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadFolder)) fs.mkdirSync(uploadFolder);
 
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadFolder),
+  filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
+});
+const upload = multer({ storage });
+
+app.use(cors());
 app.use(express.static('public'));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+app.use('/uploads', express.static(uploadFolder));
 
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public/upload.html'));
+// Çoklu dosya yükleme
+app.post('/upload', upload.array('photos[]', 20), (req, res) => {
+  if (!req.files || req.files.length === 0) return res.json({ success: false, message: 'Dosya yüklenmedi' });
+  res.json({ success: true, files: req.files.map(f => f.filename) });
 });
 
-app.post('/upload', upload.single('photo'), (req, res) => {
-  if (!req.file) return res.status(400).send('Dosya yüklenemedi.');
-  res.send('<h2>Teşekkürler! Fotoğraf yüklendi.</h2><a href="/">Geri dön</a>');
-});
-
+// Galeri dosyalarını listele
 app.get('/gallery', (req, res) => {
-  fs.readdir('./uploads', (err, files) => {
-    if (err) return res.send('Galeri okunamıyor.');
-    const images = files.map(file => `<img src="/uploads/${file}" style="width:200px;margin:10px">`).join('');
-    res.send(`<h1>Yüklenen Fotoğraflar</h1>${images}<br><a href="/">Fotoğraf Yükle</a>`);
+  fs.readdir(uploadFolder, (err, files) => {
+    if (err) return res.status(500).json({ success: false, message: 'Dosyalar okunamadı' });
+    const images = files.filter(f => /\.(jpg|jpeg|png|gif)$/i.test(f));
+    res.json({ success: true, images });
   });
 });
 
-app.listen(PORT, () => console.log(`http://localhost:${PORT} adresinde çalışıyor`));
+// Fotoğraf silme
+app.delete('/delete/:filename', (req, res) => {
+  const filePath = path.join(uploadFolder, req.params.filename);
+  fs.unlink(filePath, err => {
+    if (err) return res.status(404).json({ success: false, message: 'Dosya bulunamadı' });
+    res.json({ success: true, message: 'Dosya silindi' });
+  });
+});
+
+app.listen(PORT, () => console.log(`Server ${PORT} portunda çalışıyor`));
