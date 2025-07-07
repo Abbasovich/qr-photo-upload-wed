@@ -1,47 +1,61 @@
 const express = require('express');
 const multer = require('multer');
-const fs = require('fs');
 const path = require('path');
-const cors = require('cors');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const uploadFolder = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadFolder)) fs.mkdirSync(uploadFolder);
+// Yüklənən fotolar burada saxlanacaq
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 
+// Multer konfiqurasiyası: çoxlu fayl yükləmək üçün
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadFolder),
-  filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const ext = path.extname(file.originalname);
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+  }
 });
 const upload = multer({ storage });
 
-app.use(cors());
 app.use(express.static('public'));
-app.use('/uploads', express.static(uploadFolder));
+app.use('/uploads', express.static(uploadDir));  // Yüklənən şəkilləri göstərmək üçün
 
-// Çoklu dosya yükleme
-app.post('/upload', upload.array('photos[]', 20), (req, res) => {
-  if (!req.files || req.files.length === 0) return res.json({ success: false, message: 'Dosya yüklenmedi' });
-  res.json({ success: true, files: req.files.map(f => f.filename) });
+// Frontend əsas səhifə
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/index.html'));
 });
 
-// Galeri dosyalarını listele
-app.get('/gallery', (req, res) => {
-  fs.readdir(uploadFolder, (err, files) => {
-    if (err) return res.status(500).json({ success: false, message: 'Dosyalar okunamadı' });
-    const images = files.filter(f => /\.(jpg|jpeg|png|gif)$/i.test(f));
-    res.json({ success: true, images });
+// Çoxlu fayl yükləmə endpointi
+app.post('/upload', upload.array('photos', 10), (req, res) => {
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ success: false, message: 'Fayl tapılmadı' });
+  }
+  res.json({ success: true, message: 'Fayllar uğurla yükləndi!' });
+});
+
+// Yüklənən faylların siyahısını qaytarmaq üçün endpoint
+app.get('/photos', (req, res) => {
+  fs.readdir(uploadDir, (err, files) => {
+    if (err) return res.status(500).json({ success: false, message: 'Fayllar oxunmadı' });
+    res.json({ success: true, files });
   });
 });
 
-// Fotoğraf silme
-app.delete('/delete/:filename', (req, res) => {
-  const filePath = path.join(uploadFolder, req.params.filename);
-  fs.unlink(filePath, err => {
-    if (err) return res.status(404).json({ success: false, message: 'Dosya bulunamadı' });
-    res.json({ success: true, message: 'Dosya silindi' });
+// Foto silmə üçün endpoint
+app.delete('/photos/:filename', (req, res) => {
+  const filename = req.params.filename;
+  const filePath = path.join(uploadDir, filename);
+  fs.unlink(filePath, (err) => {
+    if (err) return res.status(500).json({ success: false, message: 'Foto silinə bilmədi' });
+    res.json({ success: true, message: 'Foto silindi' });
   });
 });
 
-app.listen(PORT, () => console.log(`Server ${PORT} portunda çalışıyor`));
+app.listen(PORT, () => {
+  console.log(`Server ${PORT} portunda işləyir`);
+});
+
