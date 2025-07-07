@@ -1,16 +1,201 @@
 <!DOCTYPE html>
-<html>
+<html lang="tr">
 <head>
-  <meta charset="UTF-8">
-  <title>Fotoğraf Yükle</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QR Fotoğraf Galerisi</title>
+<style>
+  body {
+    margin: 0; padding: 0;
+    background: url('https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1350&q=80') no-repeat center center fixed;
+    background-size: cover;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+  }
+  .container {
+    background: rgba(255,255,255,0.9);
+    padding: 25px;
+    margin: 20px;
+    border-radius: 12px;
+    width: 360px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    text-align: center;
+  }
+  input[type="file"] {
+    width: 100%;
+    margin-bottom: 15px;
+    font-size: 16px;
+  }
+  button {
+    background-color: #007BFF;
+    border: none;
+    padding: 15px 0;
+    width: 100%;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: 600;
+    color: white;
+    cursor: pointer;
+    margin-bottom: 15px;
+    transition: background-color 0.3s ease;
+  }
+  button:hover {
+    background-color: #0056b3;
+  }
+  #message {
+    font-weight: 600;
+    color: green;
+    margin-bottom: 15px;
+  }
+  #gallery {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    justify-content: center;
+  }
+  .photo-card {
+    background: white;
+    border-radius: 10px;
+    padding: 10px;
+    width: 120px;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    text-align: center;
+  }
+  .photo-card img {
+    max-width: 100%;
+    border-radius: 8px;
+    margin-bottom: 8px;
+  }
+  .photo-card button {
+    width: 48%;
+    padding: 6px 0;
+    font-size: 14px;
+    margin: 2px 1%;
+  }
+</style>
 </head>
 <body>
-  <h1>Fotoğraf Yükle</h1>
-  <form action="/upload" method="post" enctype="multipart/form-data">
-    <input type="file" name="photo" accept="image/*" required><br><br>
-    <button type="submit">Yükle</button>
-  </form>
-  <br>
-  <a href="/gallery">Galeriye Git</a>
+
+  <div class="container">
+    <h2>Fotoğraf Yükle</h2>
+    <input type="file" id="files" multiple accept="image/*" />
+    <button id="uploadBtn">Yükle</button>
+    <div id="message"></div>
+  </div>
+
+  <div class="container" style="max-width: 800px;">
+    <h2>Galeri</h2>
+    <button id="loadGalleryBtn">Galeriyi Göster</button>
+    <div id="gallery"></div>
+  </div>
+
+<script>
+  const uploadBtn = document.getElementById('uploadBtn');
+  const filesInput = document.getElementById('files');
+  const messageDiv = document.getElementById('message');
+  const loadGalleryBtn = document.getElementById('loadGalleryBtn');
+  const galleryDiv = document.getElementById('gallery');
+
+  // Fotoğraf yükleme
+  uploadBtn.addEventListener('click', () => {
+    const files = filesInput.files;
+    if (files.length === 0) {
+      alert('Lütfen en az bir dosya seçin!');
+      return;
+    }
+
+    const formData = new FormData();
+    for (let i=0; i<files.length; i++) {
+      formData.append('photos[]', files[i]);
+    }
+
+    fetch('/upload', {
+      method: 'POST',
+      body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+      if (data.success) {
+        messageDiv.style.color = 'green';
+        messageDiv.textContent = 'Dosyalar başarıyla yüklendi!';
+        filesInput.value = '';
+        loadGallery();  // Galeriyi yenile
+      } else {
+        messageDiv.style.color = 'red';
+        messageDiv.textContent = 'Yükleme sırasında hata oluştu.';
+      }
+    })
+    .catch(() => {
+      messageDiv.style.color = 'red';
+      messageDiv.textContent = 'Sunucuya bağlanırken hata oluştu.';
+    });
+  });
+
+  // Galeriyi yükle ve göster
+  loadGalleryBtn.addEventListener('click', loadGallery);
+
+  function loadGallery() {
+    fetch('/gallery')
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          galleryDiv.innerHTML = '';
+          if (data.images.length === 0) {
+            galleryDiv.innerHTML = '<p>Henüz fotoğraf yok.</p>';
+            return;
+          }
+          data.images.forEach(img => {
+            const card = document.createElement('div');
+            card.className = 'photo-card';
+
+            const image = document.createElement('img');
+            image.src = '/uploads/' + img;
+            image.alt = img;
+            card.appendChild(image);
+
+            // İndir butonu
+            const downloadBtn = document.createElement('button');
+            downloadBtn.textContent = 'İndir';
+            downloadBtn.onclick = () => {
+              const link = document.createElement('a');
+              link.href = image.src;
+              link.download = img;
+              link.click();
+            };
+            card.appendChild(downloadBtn);
+
+            // Sil butonu
+            const deleteBtn = document.createElement('button');
+            deleteBtn.textContent = 'Sil';
+            deleteBtn.style.backgroundColor = '#dc3545';
+            deleteBtn.onclick = () => {
+              if (confirm('Bu fotoğrafı silmek istediğinize emin misiniz?')) {
+                fetch('/delete/' + encodeURIComponent(img), {
+                  method: 'DELETE'
+                })
+                .then(res => res.json())
+                .then(resp => {
+                  if (resp.success) {
+                    loadGallery(); // Galeriyi yenile
+                  } else {
+                    alert('Silme işlemi başarısız.');
+                  }
+                });
+              }
+            };
+            card.appendChild(deleteBtn);
+
+            galleryDiv.appendChild(card);
+          });
+        } else {
+          galleryDiv.innerHTML = '<p>Galeriyi yüklerken hata oluştu.</p>';
+        }
+      })
+      .catch(() => {
+        galleryDiv.innerHTML = '<p>Sunucuya bağlanırken hata oluştu.</p>';
+      });
+  }
+</script>
+
 </body>
 </html>
